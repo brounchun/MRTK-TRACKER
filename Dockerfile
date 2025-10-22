@@ -1,46 +1,57 @@
-# Playwright를 안정적으로 지원하는 공식 Python Slim 이미지 사용
 FROM python:3.10-slim
 
-# Playwright가 필요로 하는 환경 변수 설정 (GUI 없이 Headless 모드로 실행)
 ENV PYTHONUNBUFFERED=1
-# ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright # <--- 🚫 이 경로 설정은 제거합니다.
 
-# 1. Playwright 실행에 필요한 시스템 종속성 설치
-# 이 패키지들은 Playwright의 Headless 모드 실행에 필수적입니다.
+# 시스템 의존성 설치
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    libwebkit2gtk-4.0-3 \
-    libgtk-3-0 \
-    libnotify-dev \
-    libgconf-2-4 \
-    libnss3 \
-    libxss1 \
+    wget \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
     libasound2 \
-    libxtst6 \
-    xauth \
-    xvfb \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgcc1 \
     libgbm-dev \
-    libnss3-dev \
-    libxkbcommon-x11-0 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    xdg-utils \
+    xvfb \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# 작업 디렉토리 설정
 WORKDIR /app
 
-# 2. requirements.txt 복사 및 Python 의존성 설치
-# (pip cache를 사용하지 않아 강제 재설치를 유도합니다.)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 3. Playwright 브라우저 엔진 설치 (Chromium)
-# !! 변경: --install-dir 옵션을 제거하고, 기본 경로에 설치합니다.
-RUN playwright install chromium
+# Playwright 브라우저 엔진 설치
+RUN playwright install chromium --with-deps
 
-# 4. Streamlit 어플리케이션 파일 복사
-# app.py, scraper.py, utils.py 등 모든 파일을 컨테이너 내부로 복사합니다.
 COPY . .
 
-# 5. Streamlit 앱 실행 명령어 정의
-# Render 포트 (8501) 및 Streamlit 실행 설정
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.enableCORS=true", "--server.enableXsrfProtection=false"]
