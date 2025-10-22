@@ -33,8 +33,8 @@ def load_runner_text_from_gcs():
         st.error(f"GCS에서 runner_list.txt 읽기 실패: {e}")
         return ""
 
-runner_details_text = load_runner_text_from_gcs()
 
+runner_details_text = load_runner_text_from_gcs()
 
 # runner_details_text = """
 # 1051, 42.195
