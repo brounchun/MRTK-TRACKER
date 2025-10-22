@@ -154,6 +154,7 @@ def render_course_track(course_name: str, total_distance: float, runners_data: p
 
     runners_data = runners_data.groupby('grouping_key', group_keys=False).apply(assign_dispersal_index)
     
+    
     # 정렬 시 'finish_time_seconds' 컬럼 존재 여부 확인
     sort_cols = ['is_finished', 'progress_ratio']
     if 'finish_time_seconds' in runners_data.columns:

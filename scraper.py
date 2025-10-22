@@ -7,6 +7,7 @@ except AttributeError:
     pass # Ignore if policy is not available (e.g., non-Windows)
 
 import time
+import sys # <-- 시스템 로깅을 위해 추가
 from typing import Dict, Any, List, Optional
 
 # Playwright and BeautifulSoup are imported inside the class methods 
@@ -34,28 +35,32 @@ class MyResultScraper:
     def fetch_html(self, race_id: int, runner_id: int) -> Optional[str]:
         """Playwright로 렌더링된 HTML 가져오기"""
         url = f"{self.base}/{race_id}/{runner_id}"
-        print(f"[{race_id}/{runner_id}] URL 접속 시도: {url}")
+        print(f"[{race_id}/{runner_id}] URL 접속 시도: {url}", file=sys.stderr) # 로그 강화
         
         try:
             from playwright.sync_api import sync_playwright
             
             with sync_playwright() as p:
-                # headless=True: 브라우저 UI 없이 실행 (기본값)
-                browser = p.chromium.launch(headless=True)
+                # 🚨 Docker 환경 실행을 위해 --no-sandbox 옵션 추가
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-setuid-sandbox'] # <-- 핵심 수정
+                )
                 page = browser.new_page()
                 page.goto(url, timeout=self.timeout * 1000)
                 
                 # JS 데이터 로드 대기: 
+                print(f"[{race_id}/{runner_id}] 데이터 셀렉터 대기 중...", file=sys.stderr)
                 # 데이터가 로드된 테이블 행이 나타날 때까지 기다립니다. (최대 8초)
-                print(f"[{race_id}/{runner_id}] 데이터 셀렉터 대기 중...")
                 page.wait_for_selector("div.table-row.ant-row", timeout=8000)
                 
                 html = page.content()
                 browser.close()
-                print(f"[{race_id}/{runner_id}] HTML 가져오기 성공.")
+                print(f"[{race_id}/{runner_id}] HTML 가져오기 성공.", file=sys.stderr)
                 return html
         except Exception as e:
-            print(f"[{race_id}/{runner_id}] [Playwright 오류] HTML 가져오기 실패: {e}")
+            # 🚨 실패 시 에러를 sys.stderr로 출력하여 로그 확인이 용이하도록 함
+            print(f"[{race_id}/{runner_id}] [Playwright 오류] HTML 가져오기 실패: {e}", file=sys.stderr)
             return None
 
     def parse_runner(self, html: str) -> Dict[str, Any]:
@@ -137,7 +142,7 @@ class MyResultScraper:
         return parsed
 
 # ------------------------------------
-# 데모 실행 로직
+# 데모 실행 로직 (변경 없음)
 # ------------------------------------
 if __name__ == "__main__":
     # --- 주의 ---
