@@ -84,7 +84,7 @@ def parse_distance_input(text: str) -> float:
 def fetch_many(race_id_int: int, ids: list[int]):
     try:
         scraper = MyResultScraper()
-        return scraper.get_many(race_id_int, ids, limit=5)
+        return scraper.get_many(race_id_int, ids, limit=4)
     except NameError:
         st.warning("⚠️ 'MyResultScraper'를 찾을 수 없습니다. (scraper.py 확인 필요)")
         return [{"error": "Missing Scraper"}] * len(ids)
