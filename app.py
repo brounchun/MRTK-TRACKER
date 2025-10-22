@@ -229,7 +229,7 @@ start = st.button("크롤링")
 
 @st.cache_data(show_spinner=False)
 def fetch_many(race_id_int: int, ids: list[int]):
-    scraper = MyResultScraper()
+    scraper = MyResultScraper()    
     return [scraper.get_runner(race_id_int, rid) for rid in ids]
 
 def normalize_to_rows(one: dict) -> list[dict]:
@@ -265,6 +265,7 @@ if start:
 
     oks = [d for d in data_list if not d.get("error")]
     all_rows = [r for d in oks for r in normalize_to_rows(d)]
+    
 
     if not all_rows:
         st.error("데이터를 가져오지 못했습니다. 참가자 ID를 확인해주세요.")
