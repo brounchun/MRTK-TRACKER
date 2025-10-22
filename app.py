@@ -2,8 +2,13 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
+from google.cloud import storage
 from scraper import MyResultScraper
 from utils import parse_hhmmss_to_seconds
+
+BUCKET_NAME = "mrtk-runner-data"
+FILE_NAME = "runner_list.txt"
 
 # ---------------------------------------------------------
 # 기본 설정
@@ -16,31 +21,45 @@ st.title("🏃 MRTK 2025춘천마라톤 Tracker")
 # ---------------------------------------------------------
 race_id = "132"
 
+def load_runner_text_from_gcs():
+    """GCS에서 참가자 목록 파일을 읽어옵니다."""
+    try:
+        client = storage.Client()
+        bucket = client.bucket(BUCKET_NAME)
+        blob = bucket.blob(FILE_NAME)
+        text = blob.download_as_text(encoding="utf-8")
+        return text
+    except Exception as e:
+        st.error(f"GCS에서 runner_list.txt 읽기 실패: {e}")
+        return ""
 
-runner_details_text = """
-1051, 42.195
-1342, 42.195
-1139, 42.195
-1198, 42.195
-3073, 42.195
-8632, 42.195
-2391, 42.195
-2051, 42.195
-2598, 42.195
-2004, 42.195
-4110, 42.195
-7026, 42.195
-6135, 42.195
-10313, 42.195
-7081, 42.195
-4211, 42.195
-13114, 42.195
-13215, 42.195
-7342, 42.195
-7196, 42.195
-4109, 42.195
-37256, 10"
-"""
+runner_details_text = load_runner_text_from_gcs()
+
+
+# runner_details_text = """
+# 1051, 42.195
+# 1342, 42.195
+# 1139, 42.195
+# 1198, 42.195
+# 3073, 42.195
+# 8632, 42.195
+# 2391, 42.195
+# 2051, 42.195
+# 2598, 42.195
+# 2004, 42.195
+# 4110, 42.195
+# 7026, 42.195
+# 6135, 42.195
+# 10313, 42.195
+# 7081, 42.195
+# 4211, 42.195
+# 13114, 42.195
+# 13215, 42.195
+# 7342, 42.195
+# 7196, 42.195
+# 4109, 42.195
+# 37256, 10"
+# """
 
 # ---------------------------------------------------------
 # 헬퍼 함수

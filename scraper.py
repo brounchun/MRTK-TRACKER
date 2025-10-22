@@ -146,6 +146,6 @@ class MyResultScraper:
         await asyncio.gather(*(sem_task(rid) for rid in runner_ids))
         return results
 
-    def get_many(self, race_id: int, runner_ids: list[int], limit: int = 5):
+    def get_many(self, race_id: int, runner_ids: list[int], limit: int = 4):
         """비동기 병렬 실행 (외부에서 호출용)"""
         return asyncio.run(self._get_many_async(race_id, runner_ids, limit))
