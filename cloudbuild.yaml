@@ -1,35 +1,90 @@
-substitutions:
-  _REGION: asia-northeast3
-  _SERVICE: mrtk-tracker
-  _REPO: app
-  _IMAGE_NAME: mrtk-tracker
-
-steps:
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
-      - '.'
-
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'push'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
-
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      [
-        'run','deploy','${_SERVICE}',
-        '--image','${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}',
-        '--region','${_REGION}',
-        '--allow-unauthenticated',
-        '--port','8080',
-        '--cpu','1','--memory','1Gi',
-        '--min-instances','0','--max-instances','3',
-        '--concurrency','40','--timeout','900s'
-      ]
-
-images:
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: mrtk-tracker
+  namespace: '283269613851'
+  selfLink: /apis/serving.knative.dev/v1/namespaces/283269613851/services/mrtk-tracker
+  uid: a7f7b5e0-b173-4ab9-b819-f9ed9eef9fae
+  resourceVersion: AAZBulZCtO8
+  generation: 4
+  creationTimestamp: '2025-10-22T07:27:20.016791Z'
+  labels:
+    commit-sha: 2a491cc3ad1311a038291adb193a392364bc802a
+    gcb-build-id: 3391ed09-e917-4176-adc7-0cd0ee5c226d
+    gcb-trigger-id: 4ad85a80-bd9c-47a0-b471-79880f5e215a
+    gcb-trigger-region: global
+    managed-by: gcp-cloud-build-deploy-cloud-run
+    run.googleapis.com/satisfiesPzs: 'true'
+    cloud.googleapis.com/location: asia-northeast3
+  annotations:
+    serving.knative.dev/creator: asktop7@gmail.com
+    serving.knative.dev/lastModifier: asktop7@gmail.com
+    run.googleapis.com/client-name: cloud-console
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/operation-id: 536f6ca9-ff7b-4972-9659-7153c24bc07b
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+    run.googleapis.com/invoker-iam-disabled: 'true'
+    run.googleapis.com/scalingMode: manual
+    run.googleapis.com/manualInstanceCount: '1'
+    run.googleapis.com/urls: '["https://mrtk-tracker-283269613851.asia-northeast3.run.app","https://mrtk-tracker-l27uvl6tqa-du.a.run.app"]'
+spec:
+  template:
+    metadata:
+      labels:
+        client.knative.dev/nonce: ijywivuwsd
+        commit-sha: 2a491cc3ad1311a038291adb193a392364bc802a
+        gcb-build-id: 3391ed09-e917-4176-adc7-0cd0ee5c226d
+        gcb-trigger-id: 4ad85a80-bd9c-47a0-b471-79880f5e215a
+        gcb-trigger-region: global
+        managed-by: gcp-cloud-build-deploy-cloud-run
+        run.googleapis.com/startupProbeType: Default
+      annotations:
+        autoscaling.knative.dev/maxScale: '20'
+        run.googleapis.com/client-name: gcloud
+        run.googleapis.com/client-version: 544.0.0
+        run.googleapis.com/startup-cpu-boost: 'true'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      serviceAccountName: 283269613851-compute@developer.gserviceaccount.com
+      containers:
+      - name: placeholder-1
+        image: asia-northeast3-docker.pkg.dev/mrtk-tracker/cloud-run-source-deploy/mrtk-tracker/mrtk-tracker:2a491cc3ad1311a038291adb193a392364bc802a
+        ports:
+        - name: http1
+          containerPort: 8080
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        startupProbe:
+          timeoutSeconds: 240
+          periodSeconds: 240
+          failureThreshold: 1
+          tcpSocket:
+            port: 8080
+  traffic:
+  - percent: 100
+    latestRevision: true
+status:
+  observedGeneration: 4
+  conditions:
+  - type: Ready
+    status: 'True'
+    lastTransitionTime: '2025-10-22T07:33:47.198703Z'
+  - type: ConfigurationsReady
+    status: 'True'
+    lastTransitionTime: '2025-10-22T07:33:40.621532Z'
+  - type: RoutesReady
+    status: 'True'
+    lastTransitionTime: '2025-10-22T07:33:47.166949Z'
+  latestReadyRevisionName: mrtk-tracker-00003-c8c
+  latestCreatedRevisionName: mrtk-tracker-00003-c8c
+  traffic:
+  - revisionName: mrtk-tracker-00003-c8c
+    percent: 100
+    latestRevision: true
+  url: https://mrtk-tracker-l27uvl6tqa-du.a.run.app
+  address:
+    url: https://mrtk-tracker-l27uvl6tqa-du.a.run.app

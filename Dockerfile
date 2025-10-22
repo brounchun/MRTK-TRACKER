@@ -18,6 +18,9 @@ RUN pip install -r requirements.txt
 # ▶ Playwright 브라우저 & OS 의존성 설치 (한방)
 RUN python -m playwright install --with-deps chromium
 
+
+
+
 # 앱 복사
 COPY . .
 
