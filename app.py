@@ -15,6 +15,8 @@ st.title("🏃 MRTK 2025춘천마라톤 Tracker")
 # 하드코딩된 테스트 데이터 (레이스/참가자)
 # ---------------------------------------------------------
 race_id = "132"
+
+
 runner_details_text = """
 1051, 42.195
 1342, 42.195
@@ -32,9 +34,7 @@ runner_details_text = """
 10313, 42.195
 7081, 42.195
 4211, 42.195
-12688, 42.195
 13114, 42.195
-16303, 42.195
 13215, 42.195
 7342, 42.195
 7196, 42.195
@@ -42,7 +42,7 @@ runner_details_text = """
 37256, 10"
 """
 
-# 3459, 42.195  3283, 42.195 ---------------------------------------------------------
+# ---------------------------------------------------------
 # 헬퍼 함수
 # ---------------------------------------------------------
 def seconds_to_hhmmss(seconds: float) -> str:
@@ -84,7 +84,7 @@ def parse_distance_input(text: str) -> float:
 def fetch_many(race_id_int: int, ids: list[int]):
     try:
         scraper = MyResultScraper()
-        return scraper.get_many(race_id_int, ids, limit=2)
+        return scraper.get_many(race_id_int, ids, limit=5)
     except NameError:
         st.warning("⚠️ 'MyResultScraper'를 찾을 수 없습니다. (scraper.py 확인 필요)")
         return [{"error": "Missing Scraper"}] * len(ids)
