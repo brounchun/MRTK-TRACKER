@@ -1,28 +1,35 @@
 steps:
-  # 1. Docker 이미지 빌드
+  # 1️⃣ Docker 이미지 빌드
   - name: gcr.io/cloud-builders/docker
-    args: [
-      'build', 
-      '-t', 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA', 
-      '.'
-    ]
+    args:
+      [
+        "build",
+        "-t",
+        "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA",
+        "."
+      ]
 
-  # 2. Docker 이미지 푸시
+  # 2️⃣ 빌드한 이미지 푸시
   - name: gcr.io/cloud-builders/docker
-    args: [
-      'push', 
-      'asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA'
-    ]
+    args:
+      [
+        "push",
+        "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA"
+      ]
 
-  # 3. Cloud Run 서비스에 service.yaml 적용
+  # 3️⃣ Cloud Run 서비스에 배포 (service.yaml 적용)
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
       [
-        'run', 'services', 'replace', 'service.yaml',
-        '--region', 'asia-northeast3',
-        '--project', '$PROJECT_ID'
+        "run", "services", "replace", "service.yaml",
+        "--region", "asia-northeast3",
+        "--project", "$PROJECT_ID"
       ]
 
 images:
-  - 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA'
+  - "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA"
+
+# ✅ 로그 저장 방식 지정 (CLOUD_LOGGING_ONLY)
+options:
+  logging: CLOUD_LOGGING_ONLY
