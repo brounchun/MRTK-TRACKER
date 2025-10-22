@@ -124,6 +124,9 @@ class MyResultScraper:
         except Exception as e:
             print(f"[async] {race_id}/{runner_id} 실패: {e}", file=sys.stderr)
             return runner_id, None
+        finally:        
+            if browser:
+                await browser.close()
 
     async def _get_many_async(self, race_id: int, runner_ids: list[int], limit: int = 4):
         """내부 async 실행기 — 동시에 limit개씩 실행"""
