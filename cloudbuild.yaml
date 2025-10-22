@@ -1,0 +1,35 @@
+substitutions:
+  _REGION: asia-northeast3
+  _SERVICE: mrtk-tracker
+  _REPO: app
+  _IMAGE_NAME: mrtk-tracker
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      [
+        'run','deploy','${_SERVICE}',
+        '--image','${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}',
+        '--region','${_REGION}',
+        '--allow-unauthenticated',
+        '--port','8080',
+        '--cpu','1','--memory','1Gi',
+        '--min-instances','0','--max-instances','3',
+        '--concurrency','40','--timeout','900s'
+      ]
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
