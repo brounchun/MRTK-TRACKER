@@ -3,16 +3,17 @@ import time
 import sys
 from typing import Dict, Any, List, Optional
 from bs4 import BeautifulSoup
+import platform # 🚨 platform 모듈 추가
 
-try:
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-except AttributeError:
-    pass
+if platform.system() == "Windows": # 🚨 Windows에서만 실행하도록 조건 추가
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    except AttributeError:
+        pass
 
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; MyRunnerViewer/1.0; +https://example.com)"
 }
-
 class MyResultScraper:
     """
     MyResultScraper 클래스는 Playwright를 사용하여
@@ -34,7 +35,7 @@ class MyResultScraper:
 
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True, args=['--no-sandbox'])
+                browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
                 page = browser.new_page()
                 page.goto(url, timeout=self.timeout * 1000)
                 page.wait_for_selector("div.table-row.ant-row", timeout=8000)
@@ -113,7 +114,7 @@ class MyResultScraper:
         print(f"[async] {race_id}/{runner_id} 접속 중...", file=sys.stderr)
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True, args=['--no-sandbox'])
+                browser = await p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
                 page = await browser.new_page()
                 await page.goto(url, timeout=self.timeout * 1000)
                 await page.wait_for_selector("div.table-row.ant-row", timeout=8000)
@@ -142,6 +143,6 @@ class MyResultScraper:
         await asyncio.gather(*(sem_task(rid) for rid in runner_ids))
         return results
 
-    def get_many(self, race_id: int, runner_ids: list[int], limit: int = 4):
+    def get_many(self, race_id: int, runner_ids: list[int], limit: int = 5):
         """비동기 병렬 실행 (외부에서 호출용)"""
         return asyncio.run(self._get_many_async(race_id, runner_ids, limit))

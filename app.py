@@ -269,7 +269,7 @@ def render_course_track(course_name: str, total_distance: float, runners_data: p
         group['offset_px'] = offsets
         return group
 
-    runners_data = runners_data.groupby('group_key', group_keys=False).apply(assign_offsets)
+    runners_data = runners_data.groupby('group_key', group_keys=False).apply(assign_offsets,include_groups=False)
 
     for _, r in runners_data.iterrows():
         ratio = min(max(r['progress_ratio'], 0), 1)
