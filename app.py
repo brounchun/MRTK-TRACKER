@@ -14,6 +14,9 @@ BUCKET_NAME = "mrtk-tracker-data-2025"
 FILE_NAME = "runner_list.txt"
 LOCAL_GCS_KEY_PATH = os.path.join(os.path.dirname(__file__), "gcs_key.json")
 
+
+
+
 if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
     if os.path.exists(LOCAL_GCS_KEY_PATH):
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = LOCAL_GCS_KEY_PATH
