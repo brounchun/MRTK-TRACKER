@@ -127,13 +127,18 @@ class MyResultScraper:
                 headless=True,
                 args=[
                     "--no-sandbox",
-                    "--single-process",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
-                    "--no-zygote",
                     "--disable-extensions",
                     "--disable-software-rasterizer",
                     "--disable-background-networking",
+                    "--disable-background-timer-throttling",
+                    "--disable-renderer-backgrounding",
+                    "--disable-ipc-flooding-protection",
+                    "--hide-scrollbars",
+                    "--mute-audio",
+                    "--headless=new",
+                    "--window-position=-2000,-2000"
                 ],
             )
             context = await browser.new_context()
