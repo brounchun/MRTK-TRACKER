@@ -7,6 +7,9 @@ import json
 from google.cloud import storage
 from utils import parse_hhmmss_to_seconds
 import time
+
+print("[DEBUG] Streamlit started! 버전 2025-10-23-01", flush=True)
+
 # ---------------------------------------------------------
 # GCS 인증 자동 설정 (로컬 + 배포 환경 공통)
 # ---------------------------------------------------------
