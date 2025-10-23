@@ -1,56 +1,37 @@
 import asyncio
-import os
 import sys
-import time
-import multiprocessing
 from typing import Dict, Any, List
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
 class MyResultScraper:
-    """Playwright(async) 기반 고속 + Cloud Run 환경 적응형 버전"""
+    """Playwright(async) 기반 고속 병렬 버전 — 기존 구조와 동일 출력 유지"""
 
-    def __init__(self, base="https://www.myresult.co.kr", timeout=12):
+    def __init__(self, base="https://www.myresult.co.kr", timeout=15):
         self.base = base.rstrip("/")
         self.timeout = timeout
-        self.is_cloudrun = "K_SERVICE" in os.environ  # Cloud Run 환경 감지
-        self.cpu_count = multiprocessing.cpu_count()
-
-        # Cloud Run이면 vCPU가 2개 이하일 가능성 높음
-        # 자동 limit 계산
-        if self.is_cloudrun:
-            if self.cpu_count <= 1:
-                self.limit = 6
-            elif self.cpu_count == 2:
-                self.limit = 8
-            else:
-                self.limit = 10
-        else:
-            # 로컬은 더 넉넉하게
-            self.limit = min(12, self.cpu_count * 2)
-
-        print(
-            f"[⚙️ 환경 감지] {'Cloud Run' if self.is_cloudrun else 'Local'} 모드 | "
-            f"CPU {self.cpu_count}개 | 동시 처리 제한: {self.limit}명", file=sys.stderr, flush=True
-        )
 
     # ---------------------------------------------------------
-    # HTML 파싱 (기존 동일)
+    # 🔹 HTML 파싱 (기존 그대로 유지)
     # ---------------------------------------------------------
     def parse_runner(self, html: str) -> Dict[str, Any]:
         soup = BeautifulSoup(html, "lxml")
+
+        # 1) 섹션 테이블
         rows = soup.select("div.table-row.ant-row")
         sections = []
         for row in rows:
             cols = [div.get_text(strip=True) for div in row.select("div.ant-col.ant-col-6")]
-            if cols:
-                sections.append({
-                    "section": cols[0] if len(cols) > 0 else "",
-                    "pass_time": cols[1] if len(cols) > 1 else "",
-                    "split_time": cols[2] if len(cols) > 2 else "",
-                    "total_time": cols[3] if len(cols) > 3 else "",
-                })
+            if not cols:
+                continue
+            sections.append({
+                "section": cols[0] if len(cols) > 0 else "",
+                "pass_time": cols[1] if len(cols) > 1 else "",
+                "split_time": cols[2] if len(cols) > 2 else "",
+                "total_time": cols[3] if len(cols) > 3 else "",
+            })
 
+        # 2) 플레이어 카드 영역
         player = soup.select_one("div.card-player.ant-card") or soup.select_one("div.card-player")
         name = gender = bib_no = ""
         event_name = ""
@@ -59,14 +40,17 @@ class MyResultScraper:
             event_title = soup.select_one("div.ant-card:not(.card-player) .ant-card-meta-title")
             if event_title:
                 event_name = event_title.get_text(strip=True)
+
             if player:
                 name_tag = player.select_one(".ant-card-meta-title")
                 desc_tag = player.select_one(".ant-card-meta-description")
             else:
                 name_tag = soup.select_one("div.ant-card-meta-title")
                 desc_tag = soup.select_one("div.ant-card-meta-description")
+
             if name_tag:
                 name = name_tag.get_text(strip=True)
+
             if desc_tag:
                 parts = [p.strip() for p in desc_tag.get_text(strip=True).split("|")]
                 if parts:
@@ -74,10 +58,12 @@ class MyResultScraper:
                         gender = parts[0]
                     if len(parts) >= 2:
                         bib_no = parts[1].replace("#", "").strip()
+
             if not name and desc_tag:
                 chunks = [c.strip() for c in desc_tag.get_text(strip=True).split("|")]
                 if chunks:
                     name = chunks[0]
+
         except Exception as e:
             print(f"[파싱오류] {e}", file=sys.stderr, flush=True)
 
@@ -90,107 +76,62 @@ class MyResultScraper:
         }
 
     # ---------------------------------------------------------
-    # 참가자 개별 처리
+    # 🔹 참가자 한 명 처리 (비동기)
     # ---------------------------------------------------------
     async def fetch_runner(self, page, race_id: int, runner_id: int) -> Dict[str, Any]:
         url = f"{self.base}/{race_id}/{runner_id}"
+        print(f"[async] {race_id}/{runner_id} 접속 중...", file=sys.stderr, flush=True)
         try:
-            await page.goto(url, timeout=self.timeout * 1000, wait_until="domcontentloaded")
-            try:
-                await page.wait_for_selector("div.table-row.ant-row", timeout=7000)
-            except:
-                await asyncio.sleep(0.8)
+            await page.goto(url, timeout=self.timeout * 1000)
+            await page.wait_for_selector("div.table-row.ant-row", timeout=8000)
             html = await page.content()
             parsed = self.parse_runner(html)
             parsed["runner_id"] = runner_id
+            print(f"[async] {race_id}/{runner_id} 완료", file=sys.stderr, flush=True)
             return parsed
+
         except PlaywrightTimeoutError:
+            print(f"[timeout] {race_id}/{runner_id} 시간 초과", file=sys.stderr, flush=True)
             return {"runner_id": runner_id, "error": "timeout"}
         except Exception as e:
+            print(f"[error] {race_id}/{runner_id} 실패: {e}", file=sys.stderr, flush=True)
             return {"runner_id": runner_id, "error": str(e)}
 
     # ---------------------------------------------------------
-    # 적응형 병렬 크롤링
+    # 🔹 병렬 크롤링 (asyncio + 단일 브라우저)
     # ---------------------------------------------------------
-    async def get_many_async(self, race_id: int, runner_ids: List[int]) -> List[Dict[str, Any]]:
-        total = len(runner_ids)
-        done = 0
-        start_time = time.time()
+    async def get_many_async(self, race_id: int, runner_ids: List[int], limit: int = 10) -> List[Dict[str, Any]]:
+        print(f"[🚀] Async 병렬 크롤링 시작 (최대 동시 {limit}명)", file=sys.stderr, flush=True)
         results = []
-
-        print(f"[🚀] 병렬 크롤링 시작 (총 {total}명, 동시 {self.limit}명)", file=sys.stderr, flush=True)
+        sem = asyncio.Semaphore(limit)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(
-                channel="chrome",
                 headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-extensions",
-                    "--disable-software-rasterizer",
-                    "--disable-background-networking",
-                    "--disable-background-timer-throttling",
-                    "--disable-renderer-backgrounding",
-                    "--disable-ipc-flooding-protection",
-                    "--hide-scrollbars",
-                    "--mute-audio",
-                    "--headless=new",
-                    "--window-position=-2000,-2000"
-                ],
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
             )
             context = await browser.new_context()
 
-            page_pool = [await context.new_page() for _ in range(self.limit)]
-            sem = asyncio.Semaphore(self.limit)
-            lock = asyncio.Lock()
-
             async def worker(runner_id: int):
-                nonlocal done
                 async with sem:
-                    async with lock:
-                        page = page_pool.pop() if page_pool else await context.new_page()
-                    t0 = time.time()
+                    page = await context.new_page()
                     res = await self.fetch_runner(page, race_id, runner_id)
-                    await page.goto("about:blank")
-                    async with lock:
-                        page_pool.append(page)
-                    done += 1
-                    elapsed = time.time() - start_time
-                    avg = elapsed / done
-                    remain = total - done
-                    eta = remain * avg
-                    pct = (done / total) * 100
-                    print(
-                        f"[{pct:5.1f}%] {done}/{total} 완료 - ID {runner_id} "
-                        f"(평균 {avg:.2f}s, ETA {eta:.1f}s)",
-                        file=sys.stderr, flush=True
-                    )
+                    await page.close()
                     return res
 
-            # adaptive batch execution
-            batch_size = self.limit if self.is_cloudrun else self.limit * 2
-            results = []
-            for i in range(0, total, batch_size):
-                batch = runner_ids[i:i + batch_size]
-                print(f"[⚡] Batch {i//batch_size+1} 실행 ({len(batch)}명)", file=sys.stderr, flush=True)
-                part = await asyncio.gather(*(worker(r) for r in batch))
-                results.extend(part)
-
+            # gather를 이용해 동시 실행
+            results = await asyncio.gather(*(worker(rid) for rid in runner_ids))
             await browser.close()
 
-        total_time = time.time() - start_time
-        print(f"[✅] 전체 완료 ({done}/{total}) 총 소요 {total_time:.2f}s", file=sys.stderr, flush=True)
-        print("[🧹] 브라우저 정상 종료", file=sys.stderr, flush=True)
+        print("[🧹] 브라우저 정상 종료", file=sys.stderr)
         return results
 
     # ---------------------------------------------------------
-    # 외부 호출용 wrapper
+    # 🔹 외부 호출용 (기존과 동일한 인터페이스)
     # ---------------------------------------------------------
-    def get_many(self, race_id: int, runner_ids: List[int]) -> List[Dict[str, Any]]:
+    def get_many(self, race_id: int, runner_ids: List[int], limit: int = 10) -> List[Dict[str, Any]]:
         try:
-            return asyncio.run(self.get_many_async(race_id, runner_ids))
+            return asyncio.run(self.get_many_async(race_id, runner_ids, limit))
         except Exception as e:
             print(f"[FATAL] 병렬 크롤링 실패: {e}", file=sys.stderr, flush=True)
             return []
