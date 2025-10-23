@@ -482,6 +482,7 @@ with tab_individual:
                     use_container_width=True,
                     hide_index=True
                 )
+                
 end_time = time.time()
 elapsed = end_time - ui_start 
 st.markdown(f"⏱️ **총 실행 시간:** {elapsed:.3f}초")
