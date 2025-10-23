@@ -24,9 +24,12 @@ steps:
       - "-c"
       - |
         # service.yaml 내부의 변수 치환
+        echo "PROJECT_ID=${PROJECT_ID}"
+        echo "_COMMIT_SHA=${_COMMIT_SHA}"
         sed -i "s|\$PROJECT_ID|${PROJECT_ID}|g" service.yaml
-        sed -i "s|\$COMMIT_SHA|${COMMIT_SHA}|g" service.yaml
-
+        sed -i "s|\$COMMIT_SHA|${_COMMIT_SHA}|g" service.yam
+        
+        cat service.yaml
         gcloud run services replace service.yaml \
           --region=asia-northeast3 \
           --project=${PROJECT_ID}
