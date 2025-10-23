@@ -17,6 +17,7 @@ spec:
       timeoutSeconds: 300
       containers:
       - name: mrtk-tracker
+        # ✅ Cloud Build에서 sed로 치환됨 (자동 IMAGE 변수 제거)
         image: asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA
         ports:
         - containerPort: 8080
