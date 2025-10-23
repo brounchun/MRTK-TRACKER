@@ -78,13 +78,13 @@ if st.sidebar.button("🔄 GCS 데이터 새로고침"):
     st.success("✅ GCS 데이터가 새로 다운로드되었습니다.")
 else:
     runner_details_text = load_runner_text_from_gcs(force_refresh=False)
-st.markdown("""
-    <style>
-        [data-testid="stSidebar"] {
-            display: none;
-        }
-    </style>
-""", unsafe_allow_html=True)
+# st.markdown("""
+#     <style>
+#         [data-testid="stSidebar"] {
+#             display: none;
+#         }
+#     </style>
+# """, unsafe_allow_html=True)
 # ---------------------------------------------------------
 # 헬퍼 함수
 # ---------------------------------------------------------
