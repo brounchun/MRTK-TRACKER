@@ -7,7 +7,6 @@ from typing import Dict, Any, List
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
-
 class MyResultScraper:
     """Playwright(async) 기반 고속 + Cloud Run 환경 적응형 버전"""
 
