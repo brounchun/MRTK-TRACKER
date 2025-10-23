@@ -4,11 +4,10 @@ import pandas as pd
 import numpy as np
 import subprocess
 import json
+import sys
 from google.cloud import storage
 from utils import parse_hhmmss_to_seconds
 import time
-
-print("[DEBUG] Streamlit started! 버전 2025-10-23-01", flush=True)
 
 # ---------------------------------------------------------
 # GCS 인증 자동 설정 (로컬 + 배포 환경 공통)
@@ -16,8 +15,6 @@ print("[DEBUG] Streamlit started! 버전 2025-10-23-01", flush=True)
 BUCKET_NAME = "mrtk-tracker-data-2025"
 FILE_NAME = "runner_list.txt"
 LOCAL_GCS_KEY_PATH = os.path.join(os.path.dirname(__file__), "gcs_key.json")
-
-
 
 
 if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
@@ -81,13 +78,13 @@ if st.sidebar.button("🔄 GCS 데이터 새로고침"):
     st.success("✅ GCS 데이터가 새로 다운로드되었습니다.")
 else:
     runner_details_text = load_runner_text_from_gcs(force_refresh=False)
-# st.markdown("""
-#     <style>
-#         [data-testid="stSidebar"] {
-#             display: none;
-#         }
-#     </style>
-# """, unsafe_allow_html=True)
+st.markdown("""
+    <style>
+        [data-testid="stSidebar"] {
+            display: none;
+        }
+    </style>
+""", unsafe_allow_html=True)
 # ---------------------------------------------------------
 # 헬퍼 함수
 # ---------------------------------------------------------
@@ -128,48 +125,93 @@ def parse_distance_input(text: str) -> float:
 # ---------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def fetch_many(race_id_int: int, ids: list[int]):
-    """Playwright 실행을 Streamlit 외부 프로세스로 분리 + 5분 캐시 유지"""
+    """Playwright 실행을 Streamlit 외부 프로세스로 분리 (실시간 로그 + 결과 데이터 반환)"""
+
+    start_time3 = time.time()
     try:
-        # 세션 초기화
-        if "runner_cache" not in st.session_state:
-            st.session_state.runner_cache = {}
-        if "runner_cache_time" not in st.session_state:
-            st.session_state.runner_cache_time = {}
+        cmd = [
+            sys.executable,
+            "scraper_runner.py",
+            str(race_id_int),
+            ",".join(map(str, ids))
+        ]
 
-        cache_key = f"{race_id_int}_{','.join(map(str, ids))}"
-        now = time.time()
-        ttl = 5 * 60  # 5분
+        # 🔹 실시간 로그 영역
+        log_placeholder = st.empty()
+        logs = []
+        json_output = []
 
-        # 캐시 유효성 검사
-        last_time = st.session_state.runner_cache_time.get(cache_key, 0)
-        if cache_key in st.session_state.runner_cache and now - last_time < ttl:
-            st.info(f"🔁 캐시된 데이터 사용 중 ({int(ttl - (now - last_time))}초 후 자동 새로고침 예정)")
-            return st.session_state.runner_cache[cache_key]
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
 
-        # 새로 크롤링 (5분 이상 지났거나 캐시 없음)
-        with st.spinner("🏃 데이터 수집 중... (Playwright 실행)"):
-            cmd = [
-                "python",
-                "scraper_runner.py",
-                str(race_id_int),
-                ",".join(map(str, ids))
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+        logs = []
+        json_output = []
 
-        if result.returncode != 0:
-            st.error(f"스크래퍼 실행 오류: {result.stderr}")
+        # ✅ stderr + stdout을 동시에 읽기 (poll 기반)
+        while True:
+            stderr_line = process.stderr.readline()
+            stdout_line = process.stdout.readline()
+
+            if stderr_line:
+                line = stderr_line.strip()
+                logs.append(line)
+                #log_placeholder.text("\n".join(logs[-10:]))
+                print(line, flush=True)
+
+            if stdout_line:
+                json_output.append(stdout_line.strip())
+
+            if process.poll() is not None:
+                break
+
+        # 🔹 프로세스 종료 후 잔여 버퍼 처리
+        for line in process.stderr.readlines():
+            print(line.strip(), flush=True)
+        for line in process.stdout.readlines():
+            json_output.append(line.strip())
+
+        process.wait()
+
+        end_time3 = time.time()
+        elapsed3 = end_time3 - start_time3        
+        st.markdown(f"⏱️ **크롤링 총 실행 시간:** {elapsed3:.3f}초")
+        
+        # ✅ JSON 결과 검증 및 파싱
+        raw_output = "".join(json_output).strip()
+
+        if not raw_output:
+            st.warning("⚠️ scraper_runner.py에서 JSON 데이터가 반환되지 않았습니다.")
             return []
 
-        data = json.loads(result.stdout)
-        st.session_state.runner_cache[cache_key] = data
-        st.session_state.runner_cache_time[cache_key] = now
-        st.success("✅ 데이터 갱신 완료!")
+        try:
+            data = json.loads(raw_output)
+        except json.JSONDecodeError as e:
+            st.error(f"⚠️ JSON 파싱 실패: {e}")
+            st.text(raw_output)
+            return []
 
+        # ✅ 에러 JSON 형태 감지 ({"error": "...", "trace": "..."})
+        if isinstance(data, dict) and "error" in data:
+            st.error(f"❌ 스크래퍼 실행 오류: {data['error']}")
+            if "trace" in data:
+                st.text(data["trace"])
+            return []
+
+        # ✅ 정상 데이터 처리
+        st.success("✅ 데이터 갱신 완료!")
         return data
 
     except Exception as e:
         st.error(f"크롤링 실행 실패: {e}")
+        print(f"[ERROR] {e}", file=sys.stderr, flush=True)
         return []
+
 
 def normalize_to_rows(one: dict) -> list[dict]:
     rows = []
@@ -203,7 +245,7 @@ except Exception:
 
 with st.spinner("데이터 수집 중..."):
     data_list = fetch_many(race_id_int, runner_ids)
-
+ui_start = time.time()
 oks = [d for d in data_list if not d.get("error")]
 all_rows = [r for d in oks for r in normalize_to_rows(d)]
 if not all_rows:
@@ -440,6 +482,9 @@ with tab_individual:
                     use_container_width=True,
                     hide_index=True
                 )
+end_time = time.time()
+elapsed = end_time - ui_start 
+st.markdown(f"⏱️ **총 실행 시간:** {elapsed:.3f}초")
 
 # =================== 전체 트랙 ===================
 with tab_overall:
@@ -453,3 +498,8 @@ with tab_overall:
             render_course_track(str(course_name), unique_runners["total_course_km"].iloc[0], unique_runners)
         else:
             st.info("이 코스에는 표시할 참가자가 없습니다.")
+
+end_time2 = time.time()
+elapsed2 = end_time2 - ui_start 
+st.markdown(f"⏱️ **총 실행 시간:** {elapsed2:.3f}초")
+

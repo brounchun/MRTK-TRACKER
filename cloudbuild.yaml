@@ -5,7 +5,7 @@ steps:
       [
         "build",
         "-t",
-        "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA",
+        "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:${COMMIT_SHA}",
         "."
       ]
 
@@ -14,20 +14,24 @@ steps:
     args:
       [
         "push",
-        "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA"
+        "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:${COMMIT_SHA}"
       ]
 
-  # 3️⃣ Cloud Run 서비스에 배포 (service.yaml 적용)
+  # 3️⃣ Cloud Run 서비스 배포
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      [
-        "run", "services", "replace", "service.yaml",
-        "--region", "asia-northeast3",
-        "--project", "$PROJECT_ID"
-      ]
+      - "-c"
+      - |
+        # service.yaml 내부의 변수 치환
+        sed -i "s|\$PROJECT_ID|${PROJECT_ID}|g" service.yaml
+        sed -i "s|\$COMMIT_SHA|${COMMIT_SHA}|g" service.yaml
 
-  # 4️⃣ ✅ Cloud Run 공개 액세스 허용 (자동 적용)
+        gcloud run services replace service.yaml \
+          --region=asia-northeast3 \
+          --project=${PROJECT_ID}
+
+  # 4️⃣ 공개 액세스 허용
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -40,8 +44,7 @@ steps:
       ]
 
 images:
-  - "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA"
+  - "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:${COMMIT_SHA}"
 
-# ✅ 로그 저장 방식 지정 (CLOUD_LOGGING_ONLY)
 options:
   logging: CLOUD_LOGGING_ONLY
