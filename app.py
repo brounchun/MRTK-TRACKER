@@ -123,10 +123,9 @@ def parse_distance_input(text: str) -> float:
 # ---------------------------------------------------------
 # ✅ subprocess 기반 데이터 크롤링 실행
 # ---------------------------------------------------------
-@st.cache_data(show_spinner=False)
+#@st.cache_data(show_spinner=False)
 def fetch_many(race_id_int: int, ids: list[int]):
-    """Playwright 실행을 Streamlit 외부 프로세스로 분리 (실시간 로그 + 결과 데이터 반환)"""
-
+    """Playwright 실행을 Streamlit 외부 프로세스로 분리 (세션 단위 캐싱용)"""
     start_time3 = time.time()
     try:
         cmd = [
@@ -135,11 +134,6 @@ def fetch_many(race_id_int: int, ids: list[int]):
             str(race_id_int),
             ",".join(map(str, ids))
         ]
-
-        # 🔹 실시간 로그 영역
-        log_placeholder = st.empty()
-        logs = []
-        json_output = []
 
         process = subprocess.Popen(
             cmd,
@@ -150,40 +144,24 @@ def fetch_many(race_id_int: int, ids: list[int]):
             universal_newlines=True
         )
 
-        logs = []
         json_output = []
-
-        # ✅ stderr + stdout을 동시에 읽기 (poll 기반)
+        # 실시간 stderr 로깅 (필요하면 st.empty() 사용 가능)
         while True:
             stderr_line = process.stderr.readline()
             stdout_line = process.stdout.readline()
 
             if stderr_line:
-                line = stderr_line.strip()
-                logs.append(line)
-                #log_placeholder.text("\n".join(logs[-10:]))
-                print(line, flush=True)
-
+                print(stderr_line.strip(), flush=True)
             if stdout_line:
                 json_output.append(stdout_line.strip())
 
             if process.poll() is not None:
                 break
 
-        # 🔹 프로세스 종료 후 잔여 버퍼 처리
-        for line in process.stderr.readlines():
-            print(line.strip(), flush=True)
-        for line in process.stdout.readlines():
-            json_output.append(line.strip())
-
         process.wait()
-
-        end_time3 = time.time()
-        elapsed3 = end_time3 - start_time3        
-        st.markdown(f"⏱️ **크롤링 총 실행 시간:** {elapsed3:.3f}초")
-        
-        # ✅ JSON 결과 검증 및 파싱
         raw_output = "".join(json_output).strip()
+        end_time3 = time.time()
+        elapsed3 = end_time3 - start_time3
 
         if not raw_output:
             st.warning("⚠️ scraper_runner.py에서 JSON 데이터가 반환되지 않았습니다.")
@@ -196,15 +174,13 @@ def fetch_many(race_id_int: int, ids: list[int]):
             st.text(raw_output)
             return []
 
-        # ✅ 에러 JSON 형태 감지 ({"error": "...", "trace": "..."})
         if isinstance(data, dict) and "error" in data:
             st.error(f"❌ 스크래퍼 실행 오류: {data['error']}")
             if "trace" in data:
                 st.text(data["trace"])
             return []
 
-        # ✅ 정상 데이터 처리
-        st.success("✅ 데이터 갱신 완료!")
+        st.success(f"✅ 데이터 갱신 완료! (소요 {elapsed3:.2f}초)")
         return data
 
     except Exception as e:
@@ -243,8 +219,13 @@ except Exception:
     st.error("❌ 입력 형식 오류 (예: 100, 42.195)")
     st.stop()
 
-with st.spinner("데이터 수집 중..."):
-    data_list = fetch_many(race_id_int, runner_ids)
+if "data_list" not in st.session_state:
+    with st.spinner("데이터 수집 중..."):
+        st.session_state.data_list = fetch_many(race_id_int, runner_ids)
+else:
+    st.info("💾 세션 캐시 데이터 사용 중")
+
+data_list = st.session_state.data_list
 
 oks = [d for d in data_list if not d.get("error")]
 all_rows = [r for d in oks for r in normalize_to_rows(d)]
