@@ -245,7 +245,7 @@ except Exception:
 
 with st.spinner("데이터 수집 중..."):
     data_list = fetch_many(race_id_int, runner_ids)
-ui_start = time.time()
+
 oks = [d for d in data_list if not d.get("error")]
 all_rows = [r for d in oks for r in normalize_to_rows(d)]
 if not all_rows:
@@ -482,10 +482,8 @@ with tab_individual:
                     use_container_width=True,
                     hide_index=True
                 )
-                
-end_time = time.time()
-elapsed = end_time - ui_start 
-st.markdown(f"⏱️ **총 실행 시간:** {elapsed:.3f}초")
+
+
 
 # =================== 전체 트랙 ===================
 with tab_overall:
@@ -499,8 +497,4 @@ with tab_overall:
             render_course_track(str(course_name), unique_runners["total_course_km"].iloc[0], unique_runners)
         else:
             st.info("이 코스에는 표시할 참가자가 없습니다.")
-
-end_time2 = time.time()
-elapsed2 = end_time2 - ui_start 
-st.markdown(f"⏱️ **총 실행 시간:** {elapsed2:.3f}초")
 
