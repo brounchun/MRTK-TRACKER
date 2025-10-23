@@ -1,6 +1,7 @@
 substitutions:
   _COMMIT_SHA: ${SHORT_SHA}
 
+
 steps:
   - name: gcr.io/cloud-builders/docker
     args:
