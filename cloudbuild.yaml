@@ -27,6 +27,18 @@ steps:
         "--project", "$PROJECT_ID"
       ]
 
+  # 4️⃣ ✅ Cloud Run 공개 액세스 허용 (자동 적용)
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      [
+        "run", "services", "add-iam-policy-binding", "mrtk-tracker",
+        "--region", "asia-northeast3",
+        "--member=allUsers",
+        "--role=roles/run.invoker",
+        "--project", "$PROJECT_ID"
+      ]
+
 images:
   - "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:$COMMIT_SHA"
 

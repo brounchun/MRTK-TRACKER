@@ -45,7 +45,7 @@ def load_runner_text_from_gcs(force_refresh: bool = False):
     """
     BUCKET_NAME = "mrtk-tracker-data-2025"
     FILE_NAME = "runner_list.txt"
-
+    print(f"[DEBUG] GCS Client created by: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'default_service_account')}")
     # 세션 캐시 초기화
     if "gcs_cache" not in st.session_state:
         st.session_state.gcs_cache = {}
