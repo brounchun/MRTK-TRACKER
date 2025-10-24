@@ -1,9 +1,11 @@
 steps:
-  # 1️⃣ Docker Build
+  # 1️⃣ Docker Build (캐시 활용)
   - name: gcr.io/cloud-builders/docker
     args:
       [
         "build",
+        "--cache-from",
+        "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:latest",
         "-t",
         "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:${_COMMIT_SHA}",
         "."
@@ -38,3 +40,9 @@ steps:
 
 images:
   - "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:${_COMMIT_SHA}"
+
+options:
+  machineType: E2_HIGHCPU_8      # 🧠 빌드 CPU 8개 (병렬 pip install 속도↑)
+  logging: CLOUD_LOGGING_ONLY
+  env:
+    - DOCKER_BUILDKIT=1          # 🚀 최신 빌드킷 사용
