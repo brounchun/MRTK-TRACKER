@@ -101,6 +101,7 @@ class MyResultScraper:
             except:
                 await asyncio.sleep(0.8)
             html = await page.content()
+            print(html[:500], file=sys.stderr, flush=True)
             parsed = self.parse_runner(html)
             parsed["runner_id"] = runner_id
             return parsed
@@ -135,6 +136,7 @@ class MyResultScraper:
                     "--disable-background-timer-throttling",
                     "--disable-renderer-backgrounding",
                     "--disable-ipc-flooding-protection",
+                    "--disable-web-security",
                     "--hide-scrollbars",
                     "--mute-audio",
                     "--headless=new",
@@ -155,7 +157,7 @@ class MyResultScraper:
                 async with sem:
                     async with lock:
                         page = page_pool.pop(0) if page_pool else await context.new_page() 
-                    
+                    print(f"[DEBUG] 접속 시도: {url}", file=sys.stderr, flush=True)
                     res = await self.fetch_runner(page, race_id, runner_id)
                     await page.goto("about:blank") # 페이지 상태 클린
 
