@@ -20,6 +20,7 @@ if __name__ == "__main__":
         # ✅ JSON은 오직 stdout으로만 (정상 종료)
         print(json.dumps(result, ensure_ascii=False), flush=True)
 
+
     except Exception as e:
         err_msg = {
             "error": str(e),
