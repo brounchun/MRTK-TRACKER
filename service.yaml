@@ -23,8 +23,8 @@ spec:
         - containerPort: 8080
         resources:
           limits:
-            cpu: 2000m
-            memory: 8Gi
+            cpu: 4000m
+            memory: 12Gi
         startupProbe:
           timeoutSeconds: 240
           periodSeconds: 240
@@ -38,7 +38,7 @@ spec:
       - name: dshm
         emptyDir:
           medium: Memory
-          sizeLimit: 3Gi # 1GB 할당 (필요에 따라 2Gi 등으로 늘릴 수 있음)
+          sizeLimit: 2Gi # 1GB 할당 (필요에 따라 2Gi 등으로 늘릴 수 있음)
   traffic:
   - percent: 100
     latestRevision: true

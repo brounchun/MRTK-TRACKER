@@ -104,7 +104,7 @@ def format_km(km):
         return "42.195"
     if abs(km - 21.0975) < 0.001:
         return "21.0975"
-    if isinstance(km, (int, float)) and km.is_integer():
+    if isinstance(km, (int, float)) and float(km).is_integer():
         return f"{int(km)}"
     return f"{km:.2f}"
 

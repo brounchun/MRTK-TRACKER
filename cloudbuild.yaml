@@ -1,4 +1,5 @@
 steps:
+  # 1️⃣ Docker Build
   - name: gcr.io/cloud-builders/docker
     args:
       [
@@ -8,6 +9,7 @@ steps:
         "."
       ]
 
+  # 2️⃣ Docker Push
   - name: gcr.io/cloud-builders/docker
     args:
       [
@@ -15,17 +17,24 @@ steps:
         "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:${_COMMIT_SHA}"
       ]
 
+  # 3️⃣ Cloud Run 서비스 덮어쓰기
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
-      - "-c"
+      - -c
       - |
+        set -e
+        echo "🔧 Substituting variables in service.yaml..."
         sed -i "s|\$PROJECT_ID|${PROJECT_ID}|g" service.yaml
         sed -i "s|\$COMMIT_SHA|${_COMMIT_SHA}|g" service.yaml
 
+        echo "🚀 Deploying to Cloud Run..."
         gcloud run services replace service.yaml \
           --region=asia-northeast3 \
-          --project=${PROJECT_ID}
+          --project=${PROJECT_ID} \
+          --platform=managed
+
+        echo "✅ Cloud Run service replaced successfully."
 
 images:
   - "asia-northeast3-docker.pkg.dev/$PROJECT_ID/mrtk-tracker/mrtk-tracker:${_COMMIT_SHA}"
