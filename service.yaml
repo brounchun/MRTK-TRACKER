@@ -30,15 +30,7 @@ spec:
           periodSeconds: 240
           failureThreshold: 1
           tcpSocket:
-            port: 8080
-        volumeMounts:
-        - name: dshm
-          mountPath: /dev/shm
-      volumes:
-      - name: dshm
-        emptyDir:
-          medium: Memory
-          sizeLimit: 4Gi # 1GB 할당 (필요에 따라 2Gi 등으로 늘릴 수 있음)
+            port: 8080       
   traffic:
   - percent: 100
     latestRevision: true
