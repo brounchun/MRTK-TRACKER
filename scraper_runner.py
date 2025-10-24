@@ -15,7 +15,7 @@ if __name__ == "__main__":
             raise ValueError("runner_ids가 비어 있습니다.")
 
         scraper = MyResultScraper()
-        result = scraper.get_many(race_id, runner_ids, limit=12)  # limit=10~15 추천
+        result = scraper.get_many(race_id, runner_ids) 
 
         # ✅ JSON은 오직 stdout으로만 (정상 종료)
         print(json.dumps(result, ensure_ascii=False), flush=True)
