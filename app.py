@@ -6,11 +6,11 @@ import subprocess
 import json
 import sys
 from google.cloud import storage
-from utils import parse_hhmmss_to_seconds
+from utils import parse_hhmmss_to_seconds # utils.py에서 import
 import time
 
 # ---------------------------------------------------------
-# GCS 인증 자동 설정 (로컬 + 배포 환경 공통)
+# GCS 인증 자동 설정 (기존과 동일)
 # ---------------------------------------------------------
 BUCKET_NAME = "mrtk-tracker-data-2025"
 FILE_NAME = "runner_list.txt"
@@ -35,36 +35,24 @@ st.title("🏃 MRTK 2025춘천마라톤 Tracker")
 race_id = "132"
 
 # ---------------------------------------------------------
-# GCS에서 runner_list.txt 읽기
+# GCS에서 runner_list.txt 읽기 (D 전략 적용 - st.cache_data)
 # ---------------------------------------------------------
+@st.cache_data(show_spinner=False) # ✨ D 전략: Streamlit 캐시 적용
 def load_runner_text_from_gcs(force_refresh: bool = False):
     """
     GCS에서 runner_list.txt를 읽어오되, 
     Streamlit rerun 시에는 캐시 유지하고,
-    '수동 새로고침' 버튼을 눌렀을 때만 다시 다운로드함.
+    '수동 새로고침' 버튼을 눌렀을 때(force_refresh=True)만 캐시를 무효화하고 다시 다운로드함.
     """
-    BUCKET_NAME = "mrtk-tracker-data-2025"
-    FILE_NAME = "runner_list.txt"
-    print(f"[DEBUG] GCS Client created by: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'default_service_account')}")
-    # 세션 캐시 초기화
-    if "gcs_cache" not in st.session_state:
-        st.session_state.gcs_cache = {}
-
-    cache_key = f"{BUCKET_NAME}/{FILE_NAME}"
-
-    # 👉 캐시가 있고, 강제 새로고침이 아니면 기존 데이터 사용
-    if not force_refresh and cache_key in st.session_state.gcs_cache:
-        print("[INFO] GCS 캐시 사용 중 (수동 새로고침 시 갱신)")
-        return st.session_state.gcs_cache[cache_key]
-
-    # 🚀 강제 새로고침 or 최초 실행 시 GCS 다운로드
+    # force_refresh 인자는 캐시의 키가 되어 캐시 무효화에 사용됨
+    
+    # 🚀 GCS 다운로드
     print(f"load_runner_text_from_gcs 접속 중...")
     try:
         client = storage.Client()
         bucket = client.bucket(BUCKET_NAME)
         blob = bucket.blob(FILE_NAME)
         text = blob.download_as_text(encoding="utf-8")
-        st.session_state.gcs_cache[cache_key] = text
         print("[INFO] GCS 파일 다운로드 성공 ✅")
         return text
     except Exception as e:
@@ -73,11 +61,16 @@ def load_runner_text_from_gcs(force_refresh: bool = False):
         return ""
 
 st.sidebar.markdown("### 📦 데이터 관리")
+# force_refresh=True로 호출하면 cache_data는 다른 키로 인식하여 재실행됨
 if st.sidebar.button("🔄 GCS 데이터 새로고침"):
+    load_runner_text_from_gcs.clear() # 캐시를 명시적으로 비웁니다.
     runner_details_text = load_runner_text_from_gcs(force_refresh=True)
     st.success("✅ GCS 데이터가 새로 다운로드되었습니다.")
 else:
+    # force_refresh=False로 호출하면 동일한 캐시 키를 사용하여 캐시된 값을 반환합니다.
     runner_details_text = load_runner_text_from_gcs(force_refresh=False)
+
+# UI 숨김 로직은 기존과 동일
 st.markdown("""
     <style>
         [data-testid="stSidebar"] {
@@ -86,7 +79,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 # ---------------------------------------------------------
-# 헬퍼 함수
+# 헬퍼 함수 (기존과 동일)
 # ---------------------------------------------------------
 def seconds_to_hhmmss(seconds: float) -> str:
     if pd.isna(seconds) or seconds <= 0:
@@ -121,20 +114,25 @@ def parse_distance_input(text: str) -> float:
         return 0.0
 
 # ---------------------------------------------------------
-# ✅ subprocess 기반 데이터 크롤링 실행
+# ✅ subprocess 기반 데이터 크롤링 실행 (C 전략 적용 - st.cache_data)
 # ---------------------------------------------------------
-#@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False) # ✨ C 전략: Streamlit 캐시 적용
 def fetch_many(race_id_int: int, ids: list[int]):
-    """Playwright 실행을 Streamlit 외부 프로세스로 분리 (세션 단위 캐싱용)"""
+    """Playwright 실행을 Streamlit 외부 프로세스로 분리 (캐싱용)"""
     start_time3 = time.time()
+    
+    # 캐싱 일관성을 위해 ids를 정렬하여 사용
+    sorted_ids = sorted(ids) 
+    
     try:
         cmd = [
             sys.executable,
             "scraper_runner.py",
             str(race_id_int),
-            ",".join(map(str, ids))
+            ",".join(map(str, sorted_ids)) # 정렬된 ID 사용
         ]
 
+        # 이하 subprocess 로직은 기존과 동일
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -145,13 +143,13 @@ def fetch_many(race_id_int: int, ids: list[int]):
         )
 
         json_output = []
-        # 실시간 stderr 로깅 (필요하면 st.empty() 사용 가능)
+        # 실시간 stderr 로깅
         while True:
             stderr_line = process.stderr.readline()
             stdout_line = process.stdout.readline()
 
             if stderr_line:
-                print(stderr_line.strip(), flush=True)
+                print(stderr_line.strip(), flush=True) 
             if stdout_line:
                 json_output.append(stdout_line.strip())
 
@@ -190,6 +188,7 @@ def fetch_many(race_id_int: int, ids: list[int]):
 
 
 def normalize_to_rows(one: dict) -> list[dict]:
+    # 기존과 동일
     rows = []
     for sec in one.get("sections", []):
         rows.append({
@@ -209,23 +208,22 @@ def normalize_to_rows(one: dict) -> list[dict]:
 # ---------------------------------------------------------
 try:
     race_id_int = int(race_id.strip())
+    # runner_list.txt (소스 1) 로드
     runner_inputs = {
         int(p[0]): parse_distance_input(p[1])
         for line in runner_details_text.strip().split('\n')
         if (p := [x.strip() for x in line.split(',')]) and len(p) >= 2 and p[0].isdigit()
     }
-    runner_ids = list(runner_inputs.keys())
+    # 캐싱을 위해 정렬된 리스트를 사용
+    runner_ids = sorted(list(runner_inputs.keys())) 
 except Exception:
     st.error("❌ 입력 형식 오류 (예: 100, 42.195)")
     st.stop()
 
-if "data_list" not in st.session_state:
-    with st.spinner("데이터 수집 중..."):
-        st.session_state.data_list = fetch_many(race_id_int, runner_ids)
-else:
-    st.info("💾 세션 캐시 데이터 사용 중")
+# st.session_state 로직 제거, st.cache_data로 대체
+with st.spinner("데이터 수집 중..."):
+    data_list = fetch_many(race_id_int, runner_ids)
 
-data_list = st.session_state.data_list
 
 oks = [d for d in data_list if not d.get("error")]
 all_rows = [r for d in oks for r in normalize_to_rows(d)]
@@ -236,13 +234,13 @@ if not all_rows:
 df = pd.DataFrame(all_rows)
 
 # ---------------------------------------------------------
-# pace 계산용 데이터 정리
+# pace 계산용 데이터 정리 (기존과 동일)
 # ---------------------------------------------------------
 df["total_seconds"] = df["total_time"].fillna('').astype(str).apply(parse_hhmmss_to_seconds).astype(float)
 df["split_seconds"] = df["split_time"].fillna('').astype(str).apply(parse_hhmmss_to_seconds).astype(float)
 
 # ---------------------------------------------------------
-# 참가자 요약 데이터 구성
+# 참가자 요약 데이터 구성 (기존과 동일)
 # ---------------------------------------------------------
 runner_properties = []
 for rid, sub in df.groupby("runner_id"):
@@ -259,7 +257,7 @@ for rid, sub in df.groupby("runner_id"):
         known_sections = sub[sub["total_time"].notna()]
         if not known_sections.empty:
             max_known_distance = max([
-                float(s.replace('K', '').replace('k', ''))
+                float(s.replace('K', '').replace('k', '').replace('m', ''))
                 for s in known_sections["section"] if any(ch.isdigit() for ch in s)
             ] + [0])
         else:
@@ -276,9 +274,10 @@ props_df = pd.DataFrame(runner_properties)
 df = df.merge(props_df, on='runner_id', how='left')
 
 # ---------------------------------------------------------
-# 코스별 트랙 시각화 함수
+# 코스별 트랙 시각화 함수 (기존과 동일)
 # ---------------------------------------------------------
 def render_course_track(course_name: str, total_distance: float, runners_data: pd.DataFrame):
+    # ... (기존 render_course_track 함수 내용 유지)
     track_height = 450
     if total_distance > 30:
         track_height = 850
@@ -344,12 +343,20 @@ def render_course_track(course_name: str, total_distance: float, runners_data: p
     """
     html = css + "<div class='track-container'><div class='track-line'></div>"
 
-    checkpoints = [0, 5, 10, 20, 30, 40, 42.195] if total_distance > 30 else [0, 5, 10, 15, 21.0975]
+    checkpoints = [0, 5, 10, 20, 30, 40, 42.195] if total_distance > 30 else ([0, 5, 10, 15, 21.0975] if total_distance > 15 else [0, 5, 10, total_distance])
+    checkpoints = sorted(list(set([c for c in checkpoints if c <= total_distance])))
+    
+    # 코스 거리와 체크포인트 보정
+    if total_distance > 0 and total_distance not in checkpoints:
+        checkpoints.append(total_distance)
+    checkpoints = sorted(list(set(checkpoints)))
+
+
     for km in checkpoints:
-        if km > total_distance:
+        if km > total_distance * 1.001:
             continue
-        top_percent = (km / total_distance) * 100
-        label = "START" if km == 0 else ("FINISH" if abs(km - total_distance) < 0.1 else f"{km:.1f}km")
+        top_percent = (km / total_distance) * 100 if total_distance > 0 else 0
+        label = "START" if km == 0 else ("FINISH" if abs(km - total_distance) < 0.1 else f"{format_km(km)}km")
         cls = "checkpoint finish-dot" if label == "FINISH" else "checkpoint"
         html += f"<div class='{cls}' style='top:{top_percent}%;'></div>"
         html += f"<div class='checkpoint-label' style='top:{top_percent}%;'>{label}</div>"
@@ -382,50 +389,21 @@ def render_course_track(course_name: str, total_distance: float, runners_data: p
     html += "</div>"
     st.html(html)
 
+
 # ---------------------------------------------------------
-# UI 구성 (그대로 유지)
+# UI 구성 (개편된 st.expander 적용)
 # ---------------------------------------------------------
 tab_individual, tab_overall = st.tabs(["개별 참가자 기록 카드", "전체 코스별 예상 위치"])
 
-# =================== 개별 카드 ===================
+# =================== 개별 카드 (수정된 부분) ===================
 with tab_individual:
-    st.subheader("개별 참가자 기록 카드 (클릭하여 상세 기록 확인)")
-    st.markdown("""
-    <style>
-    div[data-testid="stButton"] > button {
-        text-align: left !important;
-        display: block !important;
-        width: 100% !important;
-        padding: 14px 18px !important;
-        border-radius: 10px !important;
-        border: 1px solid #e0e0e0 !important;
-        background: #ffffff !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
-        transition: all .2s ease-in-out;
-        line-height: 1.28;
-        white-space: pre-line;
-    }
-    div[data-testid="stButton"] > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
-        border-color: #00A389 !important;
-        background: #f9fdfb !important;
-    }
-    div[data-active-card="true"] > div[data-testid="stButton"] > button {
-        border-color: #00A389 !important;
-        box-shadow: 0 4px 14px rgba(0,163,137,0.18) !important;
-        background: #f7fffc !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    if "active_card" not in st.session_state:
-        st.session_state.active_card = None
-
-    def toggle_card(runner_id):
-        st.session_state.active_card = None if st.session_state.active_card == runner_id else runner_id
+    st.subheader("개별 참가자 기록 카드")
+    
+    # ⭐ 기존의 커스텀 CSS 및 수동 토글 로직(st.button + st.session_state) 제거
+    # 대신 st.expander를 사용하여 리로드 없는 확장/축소 기능 구현
 
     for rid, sub in df.groupby("runner_id"):
+        # 카드에 표시할 기본 정보 추출
         name, gender, bib = sub[["name", "gender", "bib_no"]].iloc[0]
         total_course_km, max_known_distance, is_finished = sub[["total_course_km", "max_known_distance", "is_finished"]].iloc[0]
         total_sec = sub["total_seconds"].dropna().max()
@@ -434,39 +412,40 @@ with tab_individual:
         if total_sec > 0 and max_known_distance > 0:
             pace_min = (total_sec / max_known_distance) / 60
             pace_str = f"{int(pace_min):02d}:{int((pace_min % 1)*60):02d} 분/km"
+        
+        # st.expander의 헤더(label) 구성
+        label_line1 = f"🏃 **{name}** ({gender}) | 등번호 **#{bib}**"
+        label_line2 = f"코스: {format_km(total_course_km)}km | 현재 페이스: {pace_str}"
+        expander_label = f"{label_line1} \t \t {label_line2}"
+        
+        # ⭐ st.expander 사용: 토글 시 Streamlit 재실행(rerun)이 발생하지 않음
+        with st.expander(label=expander_label):
+            # 확장되었을 때 보이는 상세 내용
+            if is_finished:
+                st.success(f"✅ **최종 기록**: {seconds_to_hhmmss(total_sec)}")
+            else:
+                st.info(f"⏳ **진행 중** - 현재 거리: {max_known_distance:.1f} km")
 
-        is_open = st.session_state.active_card == rid
-        icon = "▼" if is_open else "▶"
-        label_line1 = f"{icon} {name} ({gender}) #{bib}".strip()
-        label_line2 = f"풀 마라톤 ({format_km(total_course_km)}km) | 페이스: {pace_str}"
-        button_label = f"{label_line1}\n{label_line2}"
+            st.progress(
+                max_known_distance / total_course_km,
+                text=f"{format_km(max_known_distance)} / {format_km(total_course_km)} km"
+            )
+            
+            st.markdown("---")
+            st.subheader("구간별 상세 기록")
+            st.dataframe(
+                sub[["section", "pass_time", "split_time", "total_time"]].fillna('-'),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "section": st.column_config.TextColumn("구간", width="small"),
+                    "pass_time": st.column_config.TextColumn("통과 시각", width="small"),
+                    "split_time": st.column_config.TextColumn("구간 기록", width="small"),
+                    "total_time": st.column_config.TextColumn("누적 기록", width="small"),
+                }
+            )
 
-        with st.container():
-            st.markdown(f"<div data-active-card={'true' if is_open else 'false'}></div>", unsafe_allow_html=True)
-
-            if st.button(button_label, key=f"card_btn_{rid}", on_click=toggle_card, args=(rid,), use_container_width=True):
-                pass
-
-            if is_open:
-                if is_finished:
-                    st.success(f"✅ 최종 기록: {seconds_to_hhmmss(total_sec)}")
-                else:
-                    st.info(f"⏳ 진행 중 - 거리: {max_known_distance:.1f} km")
-
-                st.progress(
-                    max_known_distance / total_course_km,
-                    text=f"{format_km(max_known_distance)} / {format_km(total_course_km)} km"
-                )
-
-                st.dataframe(
-                    sub[["section", "pass_time", "split_time", "total_time"]],
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-
-
-# =================== 전체 트랙 ===================
+# =================== 전체 트랙 (기존과 동일) ===================
 with tab_overall:
     st.header("📍 전체 코스별 실시간 진행 상황 트랙")
 
@@ -478,4 +457,3 @@ with tab_overall:
             render_course_track(str(course_name), unique_runners["total_course_km"].iloc[0], unique_runners)
         else:
             st.info("이 코스에는 표시할 참가자가 없습니다.")
-
