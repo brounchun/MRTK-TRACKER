@@ -19,7 +19,7 @@ class MyResultScraper:
         self.cpu_count = multiprocessing.cpu_count()
 
         # ⭐⭐⭐ 핵심 수정: 동시 처리 제한을 8명으로 극단적으로 낮춰 안정성 최대화 ⭐⭐⭐
-        self.limit = 8
+        self.limit = 6
 
         print(
             f"[⚙️ 환경 감지] {'Cloud Run' if self.is_cloudrun else 'Local'} 모드 | "
