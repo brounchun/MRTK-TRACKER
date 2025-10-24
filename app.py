@@ -8,6 +8,7 @@ import sys
 from google.cloud import storage
 from utils import parse_hhmmss_to_seconds
 import time
+import re # 정규 표현식 모듈 추가
 
 # ---------------------------------------------------------
 # GCS 인증 자동 설정 (로컬 + 배포 환경 공통)
@@ -238,11 +239,12 @@ df = pd.DataFrame(all_rows)
 # ---------------------------------------------------------
 # pace 계산용 데이터 정리
 # ---------------------------------------------------------
-df["total_seconds"] = df["total_time"].fillna('').astype(str).apply(parse_hhmmss_to_seconds).astype(float)
-df["split_seconds"] = df["split_time"].fillna('').astype(str).apply(parse_hhmmss_to_seconds).astype(float)
+# utils.py의 parse_hhmmss_to_seconds는 파싱 실패 시 None을 반환합니다.
+df["total_seconds"] = df["total_time"].fillna('').astype(str).apply(parse_hhmmss_to_seconds).fillna(0.0).astype(float)
+df["split_seconds"] = df["split_time"].fillna('').astype(str).apply(parse_hhmmss_to_seconds).fillna(0.0).astype(float)
 
 # ---------------------------------------------------------
-# 참가자 요약 데이터 구성
+# ⭐ 참가자 요약 데이터 구성 (max_known_distance 및 페이스 계산 로직 수정)
 # ---------------------------------------------------------
 runner_properties = []
 for rid, sub in df.groupby("runner_id"):
@@ -250,26 +252,49 @@ for rid, sub in df.groupby("runner_id"):
         continue
     user_target_km = runner_inputs.get(rid, 0.0)
     total_course_km = user_target_km or 42.195
-    finish_records = sub[sub["section"].str.contains("도착|Finish", case=False, na=False)]
+    
+    # ⭐ 1. is_finished 로직 수정: '도착|Finish' 섹션이 존재하고, total_seconds 값이 유효해야 완주로 간주
+    # total_seconds > 0 조건 추가
+    finish_records = sub[sub["section"].str.contains("도착|Finish", case=False, na=False) & (sub["total_seconds"] > 0)]
     is_finished = not finish_records.empty
+    
+    # 🏃‍♂️ 최종 기록
     finish_time_sec = finish_records["total_seconds"].max() if is_finished else np.inf
+    
+    # ⭐ 2. max_known_distance 계산 (진행률 표시용)
     if is_finished:
         max_known_distance = total_course_km
     else:
-        known_sections = sub[sub["total_time"].notna()]
-        if not known_sections.empty:
-            max_known_distance = max([
-                float(s.replace('K', '').replace('k', ''))
-                for s in known_sections["section"] if any(ch.isdigit() for ch in s)
-            ] + [0])
-        else:
-            max_known_distance = 0.0
+        # 미완주자는 유효한 숫자가 포함된 섹션 중 최대 거리만 사용
+        # ⭐ total_seconds가 0보다 큰 섹션만 유효한 것으로 간주 (기록이 ?나 -인 경우 제외)
+        known_sections = sub[sub["total_seconds"] > 0]
+        
+        valid_distances = []
+        for s in known_sections["section"]:
+            s_clean = s.replace('K', '').replace('k', '').strip()
+            # '도착', 'Start' 등의 텍스트는 float 변환 시 오류 발생 -> 숫자만 통과
+            try:
+                distance = float(s_clean)
+                valid_distances.append(distance)
+            except ValueError:
+                pass 
+        
+        # ⚠️ Start 지점 기록이 유효해도 0km로 간주해야 하므로, max_known_distance는 0이 최소값임
+        max_known_distance = max(valid_distances) if valid_distances else 0.0
+
+    # ⭐ 3. 페이스 계산 기준 설정
+    pace_calc_distance = total_course_km if is_finished else max_known_distance
+    # 미완주자는 현재까지 통과한 가장 늦은 시간, 완주자는 최종 시간
+    pace_calc_seconds = finish_time_sec if is_finished else sub["total_seconds"].max() if max_known_distance > 0 else 0.0
+    
     runner_properties.append({
         'runner_id': rid,
         'total_course_km': total_course_km,
         'is_finished': is_finished,
         'finish_time_seconds': finish_time_sec,
-        'max_known_distance': max_known_distance
+        'max_known_distance': max_known_distance,
+        'pace_calc_distance': pace_calc_distance, # 페이스 계산 기준 거리
+        'pace_calc_seconds': pace_calc_seconds    # 페이스 계산 기준 시간
     })
 
 props_df = pd.DataFrame(runner_properties)
@@ -345,11 +370,20 @@ def render_course_track(course_name: str, total_distance: float, runners_data: p
     html = css + "<div class='track-container'><div class='track-line'></div>"
 
     checkpoints = [0, 5, 10, 20, 30, 40, 42.195] if total_distance > 30 else [0, 5, 10, 15, 21.0975]
+    if total_distance <= 10.0:
+        checkpoints = [0, 5, 10]
+        
+    checkpoints = sorted(list(set([c for c in checkpoints if c <= total_distance])))
+    if total_distance > 0 and total_distance not in checkpoints:
+        checkpoints.append(total_distance)
+    checkpoints = sorted(list(set(checkpoints)))
+
+
     for km in checkpoints:
-        if km > total_distance:
+        if km > total_distance * 1.001:
             continue
-        top_percent = (km / total_distance) * 100
-        label = "START" if km == 0 else ("FINISH" if abs(km - total_distance) < 0.1 else f"{km:.1f}km")
+        top_percent = (km / total_distance) * 100 if total_distance > 0 else 0
+        label = "START" if km == 0 else ("FINISH" if abs(km - total_distance) < 0.1 else f"{format_km(km)}km")
         cls = "checkpoint finish-dot" if label == "FINISH" else "checkpoint"
         html += f"<div class='{cls}' style='top:{top_percent}%;'></div>"
         html += f"<div class='checkpoint-label' style='top:{top_percent}%;'>{label}</div>"
@@ -383,7 +417,7 @@ def render_course_track(course_name: str, total_distance: float, runners_data: p
     st.html(html)
 
 # ---------------------------------------------------------
-# UI 구성 (그대로 유지)
+# UI 구성
 # ---------------------------------------------------------
 tab_individual, tab_overall = st.tabs(["개별 참가자 기록 카드", "전체 코스별 예상 위치"])
 
@@ -426,19 +460,29 @@ with tab_individual:
         st.session_state.active_card = None if st.session_state.active_card == runner_id else runner_id
 
     for rid, sub in df.groupby("runner_id"):
+        # ⭐ props_df에서 새로 추가된 필드들 가져오기
         name, gender, bib = sub[["name", "gender", "bib_no"]].iloc[0]
-        total_course_km, max_known_distance, is_finished = sub[["total_course_km", "max_known_distance", "is_finished"]].iloc[0]
-        total_sec = sub["total_seconds"].dropna().max()
+        total_course_km, max_known_distance, is_finished, pace_calc_distance, pace_calc_seconds = sub[[
+            "total_course_km", "max_known_distance", "is_finished", 
+            "pace_calc_distance", "pace_calc_seconds"
+        ]].iloc[0]
+        
+        # UI 표시용 최종 기록
+        total_sec_display = sub["total_seconds"].dropna().max() 
+        if is_finished:
+            # 완주자라면 props_df에서 가져온 finish_time_sec 사용
+            total_sec_display = pace_calc_seconds 
 
         pace_str = "-"
-        if total_sec > 0 and max_known_distance > 0:
-            pace_min = (total_sec / max_known_distance) / 60
+        # ⭐ 페이스 계산에 새로운 필드 사용
+        if pace_calc_seconds > 0 and pace_calc_distance > 0:
+            pace_min = (pace_calc_seconds / pace_calc_distance) / 60
             pace_str = f"{int(pace_min):02d}:{int((pace_min % 1)*60):02d} 분/km"
 
         is_open = st.session_state.active_card == rid
         icon = "▼" if is_open else "▶"
         label_line1 = f"{icon} {name} ({gender}) #{bib}".strip()
-        label_line2 = f"풀 마라톤 ({format_km(total_course_km)}km) | 페이스: {pace_str}"
+        label_line2 = f"코스: {format_km(total_course_km)}km | 현재 페이스: {pace_str}"
         button_label = f"{label_line1}\n{label_line2}"
 
         with st.container():
@@ -449,12 +493,16 @@ with tab_individual:
 
             if is_open:
                 if is_finished:
-                    st.success(f"✅ 최종 기록: {seconds_to_hhmmss(total_sec)}")
+                    # ⭐ 최종 기록 표시
+                    st.success(f"✅ 최종 기록: {seconds_to_hhmmss(total_sec_display)}")
                 else:
                     st.info(f"⏳ 진행 중 - 거리: {max_known_distance:.1f} km")
 
+                # ⭐ max_known_distance가 total_course_km보다 클 수 없도록 보호
+                progress_value = min(max_known_distance / total_course_km, 1.0) 
+                
                 st.progress(
-                    max_known_distance / total_course_km,
+                    progress_value,
                     text=f"{format_km(max_known_distance)} / {format_km(total_course_km)} km"
                 )
 
@@ -463,7 +511,6 @@ with tab_individual:
                     use_container_width=True,
                     hide_index=True
                 )
-
 
 
 # =================== 전체 트랙 ===================
@@ -478,4 +525,3 @@ with tab_overall:
             render_course_track(str(course_name), unique_runners["total_course_km"].iloc[0], unique_runners)
         else:
             st.info("이 코스에는 표시할 참가자가 없습니다.")
-
