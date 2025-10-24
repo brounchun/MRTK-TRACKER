@@ -19,7 +19,7 @@ class MyResultScraper:
         self.cpu_count = multiprocessing.cpu_count()
 
         # ⭐⭐⭐ 핵심 수정: 동시 처리 제한을 8명으로 극단적으로 낮춰 안정성 최대화 ⭐⭐⭐
-        self.limit = 8
+        self.limit = 12
 
         print(
             f"[⚙️ 환경 감지] {'Cloud Run' if self.is_cloudrun else 'Local'} 모드 | "
@@ -113,79 +113,56 @@ class MyResultScraper:
         total = len(runner_ids)
         done = 0
         start_time = time.time()
-        
-        print(f"[🚀] 병렬 크롤링 시작 (총 {total}명, 동시 {self.limit}명)", file=sys.stderr, flush=True)
 
-        async with async_playwright() as p:
-            # ⭐⭐⭐ 핵심 수정: single-process 제거 & 안정화 옵션 유지 ⭐⭐⭐
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",                   
-                    "--disable-dev-shm-usage",        
-                    "--disable-gpu",                  
-                    # "--single-process",             # 제거: 불안정 유발 가능성
-                    "--no-zygote",                    
-                    "--headless=new",
-                    "--disable-extensions",
-                    "--disable-software-rasterizer",
-                    "--disable-background-networking",
-                    "--disable-background-timer-throttling",
-                    "--disable-renderer-backgrounding",
-                    "--disable-ipc-flooding-protection",
-                    "--disable-web-security",
-                    "--hide-scrollbars",
-                    "--mute-audio",
-                ],
-            )
-            context = await browser.new_context()
-            sem = asyncio.Semaphore(self.limit)
+        print(f"[🚀] 병렬 크롤링 시작 (총 {total}명, 브라우저 병렬 {self.limit}개)", file=sys.stderr, flush=True)
 
-            async def worker(runner_id: int):
-                nonlocal done
-                
-                async with sem:
-                    page = await context.new_page() 
+        sem = asyncio.Semaphore(self.limit)
+
+        async def worker(runner_id: int):
+            nonlocal done
+            async with sem:
+                async with async_playwright() as p:
+                    # 개별 브라우저 프로세스 (각 runner 완전 분리)
+                    browser = await p.chromium.launch(
+                        headless=True,
+                        args=[
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                            "--no-zygote",
+                            "--headless=new",
+                            "--disable-extensions",
+                            "--disable-software-rasterizer",
+                            "--disable-background-networking",
+                            "--disable-renderer-backgrounding",
+                            "--disable-web-security",
+                            "--hide-scrollbars",
+                            "--mute-audio",
+                        ],
+                    )
+                    context = await browser.new_context()
+                    page = await context.new_page()
                     res = await self.fetch_runner(page, race_id, runner_id)
                     await page.close()
+                    await browser.close()
 
-                    # 진행률 출력 로직
                     done += 1
                     elapsed = time.time() - start_time
-                    if done > 0:
-                        avg = elapsed / done
-                        remain = total - done
-                        eta = remain * avg
-                        pct = (done / total) * 100
-                        
-                        print(
-                            f"[{pct:5.1f}%] {done}/{total} 완료 - ID {runner_id} "
-                            f"(평균 {avg:.2f}s, ETA {eta:.1f}s)",
-                            file=sys.stderr, flush=True
-                        )
+                    avg = elapsed / done
+                    eta = (total - done) * avg
+                    pct = (done / total) * 100
+                    print(f"[{pct:5.1f}%] {done}/{total} 완료 - ID {runner_id} (평균 {avg:.2f}s, ETA {eta:.1f}s)", file=sys.stderr, flush=True)
                     return res
 
-            # ⭐ return_exceptions=True 적용으로 연쇄 취소 방지 유지 ⭐
-            tasks = [worker(r) for r in runner_ids]
-            results_with_exceptions = await asyncio.gather(*tasks, return_exceptions=True)
-
-            await browser.close()
-
-            # 결과 정리 및 최종 반환
-            final_results = []
-            for item in results_with_exceptions:
-                if isinstance(item, Exception):
-                    error_name = item.__class__.__name__
-                    print(f"[⚠️ 치명적 오류 처리] Critical gather failure: {error_name}", file=sys.stderr, flush=True)
-                    final_results.append({"runner_id": "N/A", "error": f"Critical gather failure: {error_name}"})
-                else:
-                    final_results.append(item)
-
+        # return_exceptions=True로 중단 방지
+        tasks = [worker(r) for r in runner_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
         total_time = time.time() - start_time
         print(f"[✅] 전체 완료 ({done}/{total}) 총 소요 {total_time:.2f}s", file=sys.stderr, flush=True)
-        print("[🧹] 브라우저 정상 종료", file=sys.stderr, flush=True)
-        return final_results
+        print("[🧹] 모든 브라우저 종료 완료", file=sys.stderr, flush=True)
+        return results
+
 
     # ---------------------------------------------------------
     # 외부 호출용 wrapper (기존과 동일)
