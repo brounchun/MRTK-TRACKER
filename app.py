@@ -289,6 +289,9 @@ for rid, sub in df.groupby("runner_id"):
     
     runner_properties.append({
         'runner_id': rid,
+        'name': sub["name"].iloc[0], # 이름 추가
+        'gender': sub["gender"].iloc[0], # 성별 추가
+        'bib_no': sub["bib_no"].iloc[0], # 등번호 추가
         'total_course_km': total_course_km,
         'is_finished': is_finished,
         'finish_time_seconds': finish_time_sec,
@@ -298,10 +301,17 @@ for rid, sub in df.groupby("runner_id"):
     })
 
 props_df = pd.DataFrame(runner_properties)
-df = df.merge(props_df, on='runner_id', how='left')
+df = df.merge(props_df[['runner_id', 'total_course_km', 'is_finished', 'finish_time_seconds', 
+                        'max_known_distance', 'pace_calc_distance', 'pace_calc_seconds']], on='runner_id', how='left')
 
 # ---------------------------------------------------------
-# 코스별 트랙 시각화 함수
+# 그룹화된 데이터 준비 (KeyError 방지 및 효율 개선)
+# ---------------------------------------------------------
+runner_groups = {rid: group for rid, group in df.groupby("runner_id")}
+
+
+# ---------------------------------------------------------
+# 코스별 트랙 시각화 함수 (동일)
 # ---------------------------------------------------------
 def render_course_track(course_name: str, total_distance: float, runners_data: pd.DataFrame):
     track_height = 450
@@ -312,6 +322,7 @@ def render_course_track(course_name: str, total_distance: float, runners_data: p
 
     css = f"""
     <style>
+    /* CSS 스타일은 이전과 동일 */
     .track-container {{
         position: relative;
         margin: 25px auto;
@@ -361,6 +372,7 @@ def render_course_track(course_name: str, total_distance: float, runners_data: p
         box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         z-index: 20;
         cursor: default;
+        line-height: 1.2; 
     }}
     .runner-finished {{ background: #00A389; }}
     .runner-progress {{ background: #FF5733; }}
@@ -409,118 +421,201 @@ def render_course_track(course_name: str, total_distance: float, runners_data: p
         ratio = min(max(r['progress_ratio'], 0), 1)
         top_percent = ratio * 100
         offset = r['offset_px']
-        color_class = "runner-finished" if r["is_finished"] else "runner-progress"
-        label = f"{r['name']}"
+        
+        # ⭐ 이모지로 완주자와 진행 중인 주자 구분
+        if r["is_finished"]:
+            color_class = "runner-finished"
+            marker_emoji = "✅"
+        else:
+            color_class = "runner-progress"
+            marker_emoji = "🏃"
+
+        label = f"{marker_emoji} {r['name']}" # 이름 앞에 이모지 추가
+        
         html += f"<div class='runner-marker {color_class}' style='top:{top_percent}%; left: calc(50% + {offset}px);'>{label}</div>"
 
     html += "</div>"
     st.html(html)
 
 # ---------------------------------------------------------
-# UI 구성
+# 개별 카드 렌더링 함수 (재사용)
 # ---------------------------------------------------------
-tab_individual, tab_overall = st.tabs(["개별 참가자 기록 카드", "전체 코스별 예상 위치"])
+# ⭐ runner_groups를 사용하여 KeyError 방지
+def render_runner_card(rid, sub_df: pd.DataFrame, is_open):
+    # sub_df는 이미 한 주자의 모든 기록을 포함
+    name, gender, bib = sub_df[["name", "gender", "bib_no"]].iloc[0]
+    total_course_km, max_known_distance, is_finished, pace_calc_distance, pace_calc_seconds = sub_df[[
+        "total_course_km", "max_known_distance", "is_finished", 
+        "pace_calc_distance", "pace_calc_seconds"
+    ]].iloc[0]
+    
+    # UI 표시용 최종 기록
+    total_sec_display = pace_calc_seconds if is_finished else sub_df["total_seconds"].dropna().max() 
 
-# =================== 개별 카드 ===================
-with tab_individual:
-    st.subheader("개별 참가자 기록 카드 (클릭하여 상세 기록 확인)")
-    st.markdown("""
-    <style>
-    div[data-testid="stButton"] > button {
-        text-align: left !important;
-        display: block !important;
-        width: 100% !important;
-        padding: 14px 18px !important;
-        border-radius: 10px !important;
-        border: 1px solid #e0e0e0 !important;
-        background: #ffffff !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
-        transition: all .2s ease-in-out;
-        line-height: 1.28;
-        white-space: pre-line;
-    }
-    div[data-testid="stButton"] > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
-        border-color: #00A389 !important;
-        background: #f9fdfb !important;
-    }
-    div[data-active-card="true"] > div[data-testid="stButton"] > button {
-        border-color: #00A389 !important;
-        box-shadow: 0 4px 14px rgba(0,163,137,0.18) !important;
-        background: #f7fffc !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    pace_str = "-"
+    # ⭐ 페이스 계산에 새로운 필드 사용
+    if pace_calc_seconds > 0 and pace_calc_distance > 0:
+        pace_min = (pace_calc_seconds / pace_calc_distance) / 60
+        pace_str = f"{int(pace_min):02d}:{int((pace_min % 1)*60):02d} 분/km"
+    
+    
+    # ⭐ 모바일 최적화: 아이콘 및 텍스트 구성
+    toggle_icon = "▼" if is_open else "▶"
+    status_emoji = "✅" if is_finished else "🏃"
+    gender_emoji = "♂️" if gender == "남자" else "♀️"
+    
+    # Line 1: 토글, 상태, 이름, 등번호, 성별
+    line1 = f"{toggle_icon} {status_emoji} **{name}** (#{bib}) {gender_emoji}"
+    # Line 2: 현재 위치/총 거리, 현재 페이스
+    line2 = f"📍 {format_km(max_known_distance)} / {format_km(total_course_km)} km | ⏱️ {pace_str}" 
 
-    if "active_card" not in st.session_state:
-        st.session_state.active_card = None
+    # 최종 버튼 라벨 (두 줄로 압축)
+    compact_label = f"{line1}\n{line2}"
 
     def toggle_card(runner_id):
+        # 함수 내부에서 session_state에 접근
+        if 'active_card' not in st.session_state:
+            st.session_state.active_card = None
         st.session_state.active_card = None if st.session_state.active_card == runner_id else runner_id
-
-    for rid, sub in df.groupby("runner_id"):
-        # ⭐ props_df에서 새로 추가된 필드들 가져오기
-        name, gender, bib = sub[["name", "gender", "bib_no"]].iloc[0]
-        total_course_km, max_known_distance, is_finished, pace_calc_distance, pace_calc_seconds = sub[[
-            "total_course_km", "max_known_distance", "is_finished", 
-            "pace_calc_distance", "pace_calc_seconds"
-        ]].iloc[0]
+    
+    with st.container(border=False):
+        # 활성화된 카드 테두리 및 그림자 효과를 위한 컨테이너
+        st.markdown(
+            f"<div class='runner-card-container' data-active-card={'true' if is_open else 'false'}>", 
+            unsafe_allow_html=True
+        )
         
-        # UI 표시용 최종 기록
-        total_sec_display = sub["total_seconds"].dropna().max() 
-        if is_finished:
-            # 완주자라면 props_df에서 가져온 finish_time_sec 사용
-            total_sec_display = pace_calc_seconds 
+        # 컴팩트 라벨을 가진 버튼 (토글 기능)
+        if st.button(compact_label, key=f"card_btn_{rid}", on_click=toggle_card, args=(rid,), use_container_width=True):
+            pass
 
-        pace_str = "-"
-        # ⭐ 페이스 계산에 새로운 필드 사용
-        if pace_calc_seconds > 0 and pace_calc_distance > 0:
-            pace_min = (pace_calc_seconds / pace_calc_distance) / 60
-            pace_str = f"{int(pace_min):02d}:{int((pace_min % 1)*60):02d} 분/km"
+        # 상세 정보 (카드가 열렸을 때) - 기능은 유지
+        if is_open:
+            st.markdown("<div style='padding: 10px 15px 15px;'>", unsafe_allow_html=True) # 상세 내용에 패딩 추가
+            if is_finished:
+                # ⭐ 최종 기록 표시
+                st.success(f"✅ 최종 기록: {seconds_to_hhmmss(total_sec_display)}")
+            else:
+                st.info(f"⏳ 진행 중 - 거리: {max_known_distance:.1f} km")
 
-        is_open = st.session_state.active_card == rid
-        icon = "▼" if is_open else "▶"
-        label_line1 = f"{icon} {name} ({gender}) #{bib}".strip()
-        label_line2 = f"코스: {format_km(total_course_km)}km | 현재 페이스: {pace_str}"
-        button_label = f"{label_line1}\n{label_line2}"
+            # ⭐ max_known_distance가 total_course_km보다 클 수 없도록 보호
+            progress_value = min(max_known_distance / total_course_km, 1.0) 
+            
+            st.progress(
+                progress_value,
+                text=f"{format_km(max_known_distance)} / {format_km(total_course_km)} km"
+            )
 
-        with st.container():
-            st.markdown(f"<div data-active-card={'true' if is_open else 'false'}></div>", unsafe_allow_html=True)
+            st.dataframe(
+                sub_df[["section", "pass_time", "split_time", "total_time"]],
+                use_container_width=True,
+                hide_index=True
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # 카드 컨테이너 닫기
+        st.markdown("</div>", unsafe_allow_html=True)
 
-            if st.button(button_label, key=f"card_btn_{rid}", on_click=toggle_card, args=(rid,), use_container_width=True):
-                pass
-
-            if is_open:
-                if is_finished:
-                    # ⭐ 최종 기록 표시
-                    st.success(f"✅ 최종 기록: {seconds_to_hhmmss(total_sec_display)}")
-                else:
-                    st.info(f"⏳ 진행 중 - 거리: {max_known_distance:.1f} km")
-
-                # ⭐ max_known_distance가 total_course_km보다 클 수 없도록 보호
-                progress_value = min(max_known_distance / total_course_km, 1.0) 
-                
-                st.progress(
-                    progress_value,
-                    text=f"{format_km(max_known_distance)} / {format_km(total_course_km)} km"
-                )
-
-                st.dataframe(
-                    sub[["section", "pass_time", "split_time", "total_time"]],
-                    use_container_width=True,
-                    hide_index=True
-                )
+# ---------------------------------------------------------
+# UI 구성
+# ---------------------------------------------------------
+# ⭐ 탭 구조 변경: 진행 중 명단, 완주자 명단, 전체 트랙으로 분리
+tab_progress, tab_finished, tab_overall = st.tabs(["🏃 진행 중 명단", "✅ 완주자 명단", "📍 전체 코스별 예상 위치"])
 
 
+# =================== CSS 스타일 (유지) ===================
+st.markdown("""
+<style>
+/* ... 이전 CSS 스타일 유지 ... */
+.runner-card-container {
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    transition: box-shadow 0.2s ease-in-out;
+}
+.runner-card-container[data-active-card="true"] {
+    box-shadow: 0 4px 14px rgba(0,163,137,0.18) !important;
+    border-color: #00A389 !important;
+}
+div[data-testid="stButton"] > button {
+    text-align: left !important;
+    display: block !important;
+    width: 100% !important;
+    padding: 14px 18px !important;
+    border-radius: 10px !important;
+    border: 1px solid #e0e0e0 !important;
+    background: #ffffff !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
+    transition: all .2s ease-in-out;
+    line-height: 1.28; 
+    white-space: pre-line;
+}
+div[data-testid="stButton"] > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
+    border-color: #00A389 !important;
+    background: #f9fdfb !important;
+}
+.stButton > button > div > p {
+    font-size: 1.0em;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+.stButton > button > div > p > strong {
+    font-size: 1.1em;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# =================== 전체 트랙 ===================
+
+if "active_card" not in st.session_state:
+    st.session_state.active_card = None
+
+# =================== 진행 중 명단 탭 ===================
+with tab_progress:
+    st.subheader("🏃 현재 레이스 진행 중인 참가자 명단")
+    
+    # props_df를 사용하여 완주하지 않은 주자 ID 목록을 가져옵니다.
+    progress_runners_ids = props_df.query('is_finished == False')['runner_id'].tolist()
+
+    if not progress_runners_ids:
+        st.info("현재 진행 중인 참가자가 없습니다.")
+    else:
+        # 진행 중인 주자는 이름/등번호 순으로 정렬하는 것이 일반적이므로, props_df를 사용하여 정렬
+        progress_runners_sorted = props_df.query('is_finished == False').sort_values(['name', 'bib_no'])
+        
+        for rid in progress_runners_sorted['runner_id']:
+            # ⭐ 그룹핑된 딕셔너리에서 데이터프레임을 가져옵니다.
+            sub = runner_groups.get(rid)
+            if sub is not None:
+                is_open = st.session_state.active_card == rid
+                render_runner_card(rid, sub, is_open)
+
+# =================== 완주자 명단 탭 ===================
+with tab_finished:
+    st.subheader("✅ 레이스를 완주한 참가자 명단 (최종 기록 기준)")
+
+    # props_df를 사용하여 완주한 주자들을 최종 기록 순으로 정렬
+    finished_runners_sorted = props_df.query('is_finished == True').sort_values('finish_time_seconds')
+
+    if finished_runners_sorted.empty:
+        st.info("아직 완주한 참가자가 없습니다.")
+    else:
+        for rid in finished_runners_sorted['runner_id']:
+            # ⭐ 그룹핑된 딕셔너리에서 데이터프레임을 가져옵니다.
+            sub = runner_groups.get(rid)
+            if sub is not None:
+                is_open = st.session_state.active_card == rid
+                render_runner_card(rid, sub, is_open)
+
+# =================== 전체 트랙 탭 ===================
 with tab_overall:
     st.header("📍 전체 코스별 실시간 진행 상황 트랙")
 
     valid_runners_df = df[df["total_course_km"] > 0.1]
     for course_name, course_group in valid_runners_df.groupby("total_course_km"):
         st.markdown(f"### 🏁 코스 거리: {format_km(course_name)} km")
+        # 트랙 렌더링에 필요한 정보는 중복을 제거한 데이터만 사용 (KeyError와 무관)
         unique_runners = course_group.drop_duplicates(subset=['runner_id']).reset_index(drop=True)
         if not unique_runners.empty:
             render_course_track(str(course_name), unique_runners["total_course_km"].iloc[0], unique_runners)
